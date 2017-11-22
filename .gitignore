@@ -20,10 +20,11 @@ erl_crash.dump
 *.ez
 
 # Config (copy config.example.exs)
-/config/config.exs
+/config/config.local.exs
 
 # Exodus output
 /output
+/test/output
 
 # Exodus binary
 /exodus
