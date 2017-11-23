@@ -10,15 +10,34 @@ defmodule Exodus.Merge do
   end
 
   defp init do
-    commands = [
-      ~w{rm -rf #{Config.monorepo_path}},
-      ~w{mkdir -p #{Config.monorepo_path}},
-      {~w{git init}, cd: Config.monorepo_path},
-      {~w{git checkout -B monorepo-base}, cd: Config.monorepo_path},
-      {~w{git commit --allow-empty --message} ++ ["Initial monorepo"], cd: Config.monorepo_path},
-    ]
+    if File.dir?(Config.monorepo_path) do
+      final_base = List.last(Config.base_branches)
 
-    Runner.run_commands("Prepare monorepo", commands)
+      [initial_commit_raw] = Runner.run_commands("Get root commit", [
+        {~w{git rev-list --all --grep} ++ ["Initial monorepo"], cd: Config.monorepo_path},
+      ])
+
+      initial_commit =
+        initial_commit_raw
+        |> String.split(~r/\s+/)
+        |> List.first()
+
+      commands = [
+        {~w{git checkout #{final_base}}, cd: Config.monorepo_path},
+        {~w{git checkout -b monorepo-base #{initial_commit}}, cd: Config.monorepo_path, ignore_failure: true},
+      ]
+
+      Runner.run_commands("Restore monorepo base", commands)
+    else
+      commands = [
+        ~w{mkdir -p #{Config.monorepo_path}},
+        {~w{git init}, cd: Config.monorepo_path},
+        {~w{git checkout -B monorepo-base}, cd: Config.monorepo_path},
+        {~w{git commit --allow-empty --message} ++ ["Initial monorepo"], cd: Config.monorepo_path},
+      ]
+
+      Runner.run_commands("Prepare monorepo", commands)
+    end
   end
 
   defp link do
@@ -30,7 +49,7 @@ defmodule Exodus.Merge do
       end
 
       [
-        {~w{git remote add #{repo.name} file://#{path}}, cd: Config.monorepo_path},
+        {~w{git remote add #{repo.name} file://#{path}}, cd: Config.monorepo_path, ignore_failure: true},
         {~w{git fetch #{repo.name}}, cd: Config.monorepo_path},
       ]
     end)
@@ -92,6 +111,7 @@ defmodule Exodus.Merge do
 
   defp build_branch_commands(branch, repo_branch_mapping) do
     [
+      {~w{git branch -D #{branch}}, cd: Config.monorepo_path, ignore_failure: true},
       {~w{git checkout monorepo-base}, cd: Config.monorepo_path},
       {~w{git checkout -B #{branch}}, cd: Config.monorepo_path},
     ] ++ Enum.flat_map(repo_branch_mapping, fn {repo, repo_branch} ->

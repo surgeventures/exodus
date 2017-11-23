@@ -23,22 +23,26 @@ defmodule Exodus.Runner do
   def run_command(cmd) when is_list(cmd), do: run_command({cmd, []})
   def run_command({cmd = [prog | args], opts}) do
     id = generate_id()
+    ignore_failure = Keyword.get(opts, :ignore_failure, false)
     log_file = "/tmp/exodus.runner.#{id}.log"
-    final_opts = Keyword.merge(opts,
-      stderr_to_stdout: true,
-      into: File.stream!(log_file, [:delayed_write]))
+    log_stream = File.stream!(log_file, [:delayed_write])
+    final_opts =
+      opts
+      |> Keyword.merge(stderr_to_stdout: true, into: log_stream)
+      |> Keyword.drop([:ignore_failure])
 
     IO.puts "#{id} > #{inspect_command(cmd)}"
 
-    case System.cmd(prog, args, final_opts) do
-      {output, 0} ->
+    case {ignore_failure, System.cmd(prog, args, final_opts)} do
+      {false, {output, code}} when code > 0 ->
+        output_string = Enum.into(output, "")
+        File.rm(log_file)
+        IO.puts "Failure (#{code}) from #{inspect_command(cmd)}:\n#{output_string}"
+        raise(RuntimeError, "Command `#{prog}` failed")
+      {_, {output, _code}} ->
         output_string = Enum.into(output, "")
         File.rm(log_file)
         output_string
-      {output, code} ->
-        File.rm(log_file)
-        IO.puts "Failure (#{code}) from #{inspect_command(cmd)}:\n#{output}"
-        raise(RuntimeError, "Command `#{prog}` failed")
     end
   end
 
